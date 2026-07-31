@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QQBot 管理面板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
+    .toggle-checkbox:checked + .toggle-label .toggle-dot { transform: translateX(20px); }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="adminApp()" x-cloak>
+
+  <!-- 登录页 -->
+  <div x-show="!loggedIn" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+      <div class="text-center mb-8">
+        <div class="text-4xl mb-3">🤖</div>
+        <h1 class="text-2xl font-bold text-gray-800">QQBot 管理面板</h1>
+        <p class="text-gray-500 mt-2 text-sm">请输入管理密钥登录</p>
+      </div>
+      <div class="space-y-4">
+        <input
+          x-model="token" @keyup.enter="login()"
+          type="password" placeholder="管理密钥"
+          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition">
+        <button @click="login()"
+          class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl transition">
+          登录
+        </button>
+        <p x-show="loginError" class="text-red-500 text-sm text-center" x-text="loginError"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div x-show="loggedIn" class="min-h-screen">
+    <!-- 顶栏 -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">🤖</span>
+          <h1 class="text-lg font-bold text-gray-800">QQBot 管理面板</h1>
+          <span class="ml-2 px-2 py-0.5 text-xs rounded-full"
+            :class="statusData.status === 'running' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+            x-text="statusData.status === 'running' ? '运行中' : '未知'"></span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="text-sm text-gray-400" x-text="'运行 ' + statusData.uptime"></span>
+          <button @click="logout()" class="text-sm text-gray-500 hover:text-red-500 transition">退出</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab 导航 -->
+    <nav class="bg-white border-b border-gray-200">
+      <div class="max-w-6xl mx-auto px-6 flex gap-1">
+        <template x-for="tab in tabs" :key="tab.id">
+          <button @click="activeTab = tab.id"
+            :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            class="px-4 py-3 text-sm font-medium border-b-2 transition" x-text="tab.label"></button>
+        </template>
+      </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-6 py-8">
+
+      <!-- ===== AI 配置 ===== -->
+      <div x-show="activeTab === 'ai'" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h2 class="text-lg font-bold text-gray-800 mb-1">AI 智能助手配置</h2>
+          <p class="text-sm text-gray-500 mb-6">配置 LLM API 和对话行为</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">API 地址</label>
+              <input x-model="aiConfig.api_base" type="text"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">模型</label>
+              <input x-model="aiConfig.model" type="text"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">API Key</label>
+              <input x-model="aiConfig.api_key" type="password" :placeholder="aiConfig.api_key_set ? '已设置（输入新值替换）' : 'sk-...'"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">触发前缀</label>
+              <input x-model="aiConfig.trigger_prefix" type="text"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">上下文记忆轮数</label>
+              <input x-model.number="aiConfig.context_rounds" type="number" min="1" max="20"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm">
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input x-model="aiConfig.enabled" type="checkbox" class="toggle-checkbox sr-only">
+                <div class="toggle-label relative inline-block w-11 h-6 bg-gray-200 rounded-full transition">
+                  <span class="toggle-dot absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition"></span>
+                </div>
+                <span class="text-sm font-medium text-gray-700">启用 AI 对话</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">系统提示词 (System Prompt)</label>
+            <textarea x-model="aiConfig.system_prompt" rows="4"
+              class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm resize-none"></textarea>
+            <p class="text-xs text-gray-400 mt-1">定义 AI 助手的角色和行为准则</p>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <button @click="saveAI()"
+              class="bg-blue-500 hover:bg-blue-600 text-white font-medium px-6 py-2 rounded-lg transition">
+              保存配置
+            </button>
+          </div>
+          <div x-show="aiSaved" class="mt-3 text-sm text-green-600 flex items-center gap-1">
+            <span>✅</span> AI 配置已保存
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 群管理 ===== -->
+      <div x-show="activeTab === 'group'" class="space-y-6">
+        <!-- 欢迎 & 开关 -->
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h2 class="text-lg font-bold text-gray-800 mb-1">群管理配置</h2>
+          <p class="text-sm text-gray-500 mb-6">入群欢迎语和关键词自动回复</p>
+
+          <div class="space-y-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">入群欢迎语</label>
+              <textarea x-model="groupConfig.welcome" rows="2"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm resize-none"></textarea>
+            </div>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input x-model="groupConfig.welcome_enabled" type="checkbox" class="toggle-checkbox sr-only">
+                <div class="toggle-label relative inline-block w-11 h-6 bg-gray-200 rounded-full transition">
+                  <span class="toggle-dot absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition"></span>
+                </div>
+                <span class="text-sm font-medium text-gray-700">启用入群欢迎</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input x-model="groupConfig.keyword_enabled" type="checkbox" class="toggle-checkbox sr-only">
+                <div class="toggle-label relative inline-block w-11 h-6 bg-gray-200 rounded-full transition">
+                  <span class="toggle-dot absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition"></span>
+                </div>
+                <span class="text-sm font-medium text-gray-700">启用关键词回复</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <button @click="saveGroup()"
+              class="bg-blue-500 hover:bg-blue-600 text-white font-medium px-6 py-2 rounded-lg transition">
+              保存配置
+            </button>
+          </div>
+          <div x-show="groupSaved" class="mt-3 text-sm text-green-600 flex items-center gap-1">
+            <span>✅</span> 群管理配置已保存
+          </div>
+        </div>
+
+        <!-- 关键词列表 -->
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h3 class="text-base font-bold text-gray-800 mb-4">关键词自动回复</h3>
+
+          <!-- 添加关键词 -->
+          <div class="flex gap-2 mb-4">
+            <input x-model="newKeyword" type="text" placeholder="关键词"
+              class="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm"
+              @keyup.enter="addKeyword()">
+            <input x-model="newReply" type="text" placeholder="回复内容"
+              class="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-sm"
+              @keyup.enter="addKeyword()">
+            <button @click="addKeyword()"
+              class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg transition text-sm font-medium">
+              添加
+            </button>
+          </div>
+
+          <!-- 关键词列表 -->
+          <div class="space-y-2">
+            <template x-for="(reply, keyword) in groupConfig.keywords" :key="keyword">
+              <div class="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
+                <div class="flex items-center gap-3">
+                  <span class="text-sm font-medium text-gray-700" x-text="keyword"></span>
+                  <span class="text-gray-300">→</span>
+                  <span class="text-sm text-gray-500" x-text="reply"></span>
+                </div>
+                <button @click="deleteKeyword(keyword)"
+                  class="text-red-400 hover:text-red-600 text-sm transition">删除</button>
+              </div>
+            </template>
+            <div x-show="Object.keys(groupConfig.keywords || {}).length === 0"
+              class="text-center text-gray-400 text-sm py-6">
+              暂无关键词，添加一个吧
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 定时任务 ===== -->
+      <div x-show="activeTab === 'scheduler'" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h2 class="text-lg font-bold text-gray-800 mb-1">定时任务</h2>
+          <p class="text-sm text-gray-500 mb-6">定时向指定群发送消息</p>
+
+          <!-- 添加任务 -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">群号</label>
+              <input x-model.number="newJob.group_id" type="number" placeholder="123456"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">时间</label>
+              <div class="flex gap-1">
+                <input x-model.number="newJob.hour" type="number" min="0" max="23" placeholder="时"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none text-sm">
+                <input x-model.number="newJob.minute" type="number" min="0" max="59" placeholder="分"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none text-sm">
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">消息内容</label>
+              <input x-model="newJob.message" type="text" placeholder="推送消息"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none text-sm">
+            </div>
+            <div class="flex items-end">
+              <button @click="addJob()"
+                class="w-full bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg transition text-sm font-medium">
+                添加任务
+              </button>
+            </div>
+          </div>
+
+          <!-- 任务列表 -->
+          <div class="space-y-2">
+            <template x-for="(job, idx) in schedulerJobs" :key="idx">
+              <div class="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                <div class="flex items-center gap-4">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-gray-400">群</span>
+                    <span class="text-sm font-medium text-gray-700" x-text="job.group_id"></span>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-gray-400">时间</span>
+                    <span class="text-sm font-medium text-blue-600"
+                      x-text="String(job.hour).padStart(2,'0') + ':' + String(job.minute).padStart(2,'0')"></span>
+                  </div>
+                  <span class="text-sm text-gray-500" x-text="job.message"></span>
+                </div>
+                <button @click="deleteJob(idx)"
+                  class="text-red-400 hover:text-red-600 text-sm transition">删除</button>
+              </div>
+            </template>
+            <div x-show="schedulerJobs.length === 0"
+              class="text-center text-gray-400 text-sm py-6">
+              暂无定时任务
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 日志 ===== -->
+      <div x-show="activeTab === 'logs'" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-lg font-bold text-gray-800 mb-1">运行日志</h2>
+              <p class="text-sm text-gray-500">AI 对话和系统事件记录</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input x-model="logAutoRefresh" type="checkbox" class="rounded" @change="toggleAutoRefresh()">
+                自动刷新
+              </label>
+              <button @click="loadLogs()" class="text-sm text-blue-500 hover:text-blue-700">刷新</button>
+              <button @click="clearLogs()" class="text-sm text-red-400 hover:text-red-600">清空</button>
+            </div>
+          </div>
+
+          <!-- 筛选 -->
+          <div class="flex gap-2 mb-4">
+            <button @click="logFilter = ''" :class="logFilter === '' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'" class="px-3 py-1 rounded-lg text-xs font-medium transition">全部</button>
+            <button @click="logFilter = 'success'" :class="logFilter === 'success' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'" class="px-3 py-1 rounded-lg text-xs font-medium transition">成功</button>
+            <button @click="logFilter = 'error'" :class="logFilter === 'error' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'" class="px-3 py-1 rounded-lg text-xs font-medium transition">错误</button>
+            <button @click="logFilter = 'info'" :class="logFilter === 'info' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'" class="px-3 py-1 rounded-lg text-xs font-medium transition">信息</button>
+          </div>
+
+          <!-- 日志列表 -->
+          <div class="space-y-1.5 max-h-[600px] overflow-y-auto">
+            <template x-for="(log, idx) in logs" :key="idx">
+              <div class="flex items-start gap-3 rounded-lg px-3 py-2.5" :class="log.level === 'error' ? 'bg-red-50' : log.level === 'success' ? 'bg-green-50' : log.level === 'warning' ? 'bg-yellow-50' : 'bg-gray-50'">
+                <span class="text-xs font-mono text-gray-400 mt-0.5 whitespace-nowrap" x-text="log.time_str"></span>
+                <span class="text-xs font-medium px-1.5 py-0.5 rounded"
+                  :class="log.level === 'error' ? 'bg-red-200 text-red-800' : log.level === 'success' ? 'bg-green-200 text-green-800' : log.level === 'warning' ? 'bg-yellow-200 text-yellow-800' : 'bg-blue-200 text-blue-800'"
+                  x-text="log.level"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-gray-700" x-text="log.message"></div>
+                  <div x-show="log.detail" class="text-xs text-gray-400 mt-1 break-all" x-text="log.detail"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="logs.length === 0" class="text-center text-gray-400 text-sm py-12">
+              暂无日志记录
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 状态 ===== -->
+      <div x-show="activeTab === 'status'" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h2 class="text-lg font-bold text-gray-800 mb-6">机器人状态</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-sm text-gray-500 mb-1">运行状态</div>
+              <div class="text-xl font-bold text-green-600" x-text="statusData.status === 'running' ? '运行中' : '未知'"></div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-sm text-gray-500 mb-1">运行时长</div>
+              <div class="text-xl font-bold text-gray-700" x-text="statusData.uptime"></div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-sm text-gray-500 mb-1">AI 对话</div>
+              <div class="text-xl font-bold" :class="aiConfig.enabled ? 'text-green-600' : 'text-gray-400'"
+                x-text="aiConfig.enabled ? '已启用' : '已禁用'"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Toast -->
+  <div x-show="toast" x-transition
+    class="fixed bottom-6 right-6 bg-gray-800 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm z-50"
+    x-text="toastMsg"></div>
+
+<script>
+function adminApp() {
+  return {
+    token: localStorage.getItem('qqbot_token') || '',
+    loggedIn: false,
+    loginError: '',
+    activeTab: 'ai',
+    tabs: [
+      { id: 'ai', label: 'AI 助手' },
+      { id: 'group', label: '群管理' },
+      { id: 'scheduler', label: '定时任务' },
+      { id: 'logs', label: '日志' },
+      { id: 'status', label: '状态' },
+    ],
+    aiConfig: {},
+    groupConfig: { keywords: {} },
+    schedulerJobs: [],
+    statusData: {},
+    logs: [],
+    logFilter: '',
+    logAutoRefresh: false,
+    _logTimer: null,
+    newKeyword: '',
+    newReply: '',
+    newJob: { group_id: '', hour: 8, minute: 0, message: '' },
+    aiSaved: false,
+    groupSaved: false,
+    toast: false,
+    toastMsg: '',
+
+    async init() {
+      if (this.token) {
+        await this.login();
+      }
+    },
+
+    async api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          'Authorization': 'Bearer ' + this.token,
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      if (res.status === 401) {
+        this.loggedIn = false;
+        this.loginError = '密钥无效，请重新登录';
+        throw new Error('Unauthorized');
+      }
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+
+    async login() {
+      if (!this.token) {
+        this.loginError = '请输入管理密钥';
+        return;
+      }
+      try {
+        await this.api('/api/status');
+        this.loggedIn = true;
+        this.loginError = '';
+        localStorage.setItem('qqbot_token', this.token);
+        await this.loadAll();
+      } catch (e) {
+        this.loginError = '密钥无效';
+      }
+    },
+
+    logout() {
+      this.loggedIn = false;
+      this.token = '';
+      localStorage.removeItem('qqbot_token');
+    },
+
+    async loadAll() {
+      await Promise.all([
+        this.loadAI(),
+        this.loadGroup(),
+        this.loadJobs(),
+        this.loadStatus(),
+        this.loadLogs(),
+      ]);
+    },
+
+    async loadAI() {
+      this.aiConfig = await this.api('/api/ai');
+    },
+
+    async loadGroup() {
+      this.groupConfig = await this.api('/api/group');
+      if (!this.groupConfig.keywords) this.groupConfig.keywords = {};
+    },
+
+    async loadJobs() {
+      const data = await this.api('/api/scheduler/jobs');
+      this.schedulerJobs = data.jobs || [];
+    },
+
+    async loadStatus() {
+      this.statusData = await this.api('/api/status');
+    },
+
+    async loadLogs() {
+      const params = new URLSearchParams();
+      if (this.logFilter) params.set('level', this.logFilter);
+      const data = await this.api('/api/logs?' + params.toString());
+      this.logs = data.logs || [];
+    },
+
+    toggleAutoRefresh() {
+      if (this.logAutoRefresh) {
+        this._logTimer = setInterval(() => this.loadLogs(), 3000);
+      } else {
+        if (this._logTimer) { clearInterval(this._logTimer); this._logTimer = null; }
+      }
+    },
+
+    async clearLogs() {
+      await this.api('/api/logs', { method: 'DELETE' });
+      this.logs = [];
+      this.showToast('日志已清空');
+    },
+
+    async saveAI() {
+      const body = { ...this.aiConfig };
+      if (body.api_key && body.api_key.includes('***')) {
+        delete body.api_key;
+      }
+      await this.api('/api/ai', { method: 'PUT', body: JSON.stringify(body) });
+      this.aiSaved = true;
+      this.showToast('AI 配置已保存');
+      setTimeout(() => this.aiSaved = false, 3000);
+      await this.loadAI();
+    },
+
+    async saveGroup() {
+      await this.api('/api/group', { method: 'PUT', body: JSON.stringify(this.groupConfig) });
+      this.groupSaved = true;
+      this.showToast('群管理配置已保存');
+      setTimeout(() => this.groupSaved = false, 3000);
+    },
+
+    async addKeyword() {
+      if (!this.newKeyword || !this.newReply) return;
+      await this.api('/api/group/keywords', {
+        method: 'POST',
+        body: JSON.stringify({ keyword: this.newKeyword, reply: this.newReply }),
+      });
+      this.newKeyword = '';
+      this.newReply = '';
+      await this.loadGroup();
+      this.showToast('关键词已添加');
+    },
+
+    async deleteKeyword(keyword) {
+      await this.api('/api/group/keywords/' + encodeURIComponent(keyword), { method: 'DELETE' });
+      await this.loadGroup();
+      this.showToast('关键词已删除');
+    },
+
+    async addJob() {
+      if (!this.newJob.group_id || !this.newJob.message) {
+        this.showToast('请填写群号和消息');
+        return;
+      }
+      const job = {
+        id: Date.now().toString(),
+        group_id: this.newJob.group_id,
+        hour: this.newJob.hour || 0,
+        minute: this.newJob.minute || 0,
+        message: this.newJob.message,
+      };
+      await this.api('/api/scheduler/jobs', { method: 'POST', body: JSON.stringify(job) });
+      this.newJob = { group_id: '', hour: 8, minute: 0, message: '' };
+      await this.loadJobs();
+      this.showToast('定时任务已添加');
+    },
+
+    async deleteJob(idx) {
+      const job = this.schedulerJobs[idx];
+      const jobId = job.id || idx;
+      await this.api('/api/scheduler/jobs/' + jobId, { method: 'DELETE' });
+      await this.loadJobs();
+      this.showToast('定时任务已删除');
+    },
+
+    showToast(msg) {
+      this.toastMsg = msg;
+      this.toast = true;
+      setTimeout(() => { this.toast = false; }, 2000);
+    },
+  };
+}
+</script>
+</body>
+</html>
