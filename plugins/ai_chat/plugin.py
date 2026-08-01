@@ -1,3 +1,5 @@
+import asyncio
+import random
 import time
 from collections import defaultdict, deque
 from typing import Any
@@ -17,9 +19,12 @@ from plugins.config_loader import get_ai_config
 # 每个用户在群内的上下文: {group_id: {user_id: deque([{role, content}])}}
 _contexts: dict[int, dict[int, deque[dict[str, Any]]]] = defaultdict(lambda: defaultdict(deque))
 
-# 频率限制：每群最近回复时间戳队列，每分钟最多 5 条
-_rate_limit: dict[int, deque] = defaultdict(lambda: deque(maxlen=5))
-_RATE_WINDOW = 60  # 秒
+# 频率限制：每群每 2 分钟最多 3 条
+_rate_limit: dict[int, deque] = defaultdict(lambda: deque(maxlen=3))
+_RATE_WINDOW = 120  # 秒
+
+# 活跃时段限制：8:00 - 23:00
+_ACTIVE_HOURS = set(range(8, 24))
 
 ai_chat = on_message(rule=to_me(), priority=10, block=True)
 ai_prefix = on_message(priority=11, block=True)
@@ -31,10 +36,20 @@ def _check_rate(group_id: int) -> bool:
     q = _rate_limit[group_id]
     while q and now - q[0] > _RATE_WINDOW:
         q.popleft()
-    if len(q) >= 5:
+    if len(q) >= 3:
         return False
     q.append(now)
     return True
+
+
+def _is_active_hours() -> bool:
+    """检查当前是否在活跃时段内"""
+    return time.localtime().tm_hour in _ACTIVE_HOURS
+
+
+async def _human_delay():
+    """随机延迟 3-8 秒，模拟人工回复"""
+    await asyncio.sleep(random.uniform(3, 8))
 
 
 def _build_messages(group_id: int, user_id: int, user_text: str) -> list[dict[str, str]]:
@@ -90,9 +105,12 @@ async def handle_at_ai(bot: Bot, event: GroupMessageEvent):
 
     group_id = event.group_id
     user_id = event.user_id
+    if not _is_active_hours():
+        return
     if not _check_rate(group_id):
         add_log("warning", "ai_chat", f"群{group_id} 频率限制，跳过回复")
         return
+    await _human_delay()
     messages = _build_messages(group_id, user_id, text)
 
     try:
@@ -103,7 +121,6 @@ async def handle_at_ai(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.error(f"AI 对话失败: {e}")
         add_log("error", "ai_chat", f"AI 对话失败: {text[:30]}", str(e))
-        await ai_chat.send(MessageSegment.reply(event.message_id) + "AI 暂时开小差了，稍后再试~")
 
 
 @ai_prefix.handle()
@@ -123,9 +140,12 @@ async def handle_prefix_ai(bot: Bot, event: GroupMessageEvent):
 
     group_id = event.group_id
     user_id = event.user_id
+    if not _is_active_hours():
+        return
     if not _check_rate(group_id):
         add_log("warning", "ai_chat", f"群{group_id} 频率限制，跳过回复")
         return
+    await _human_delay()
     messages = _build_messages(group_id, user_id, user_text)
 
     try:
@@ -136,4 +156,3 @@ async def handle_prefix_ai(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.error(f"AI 对话失败: {e}")
         add_log("error", "ai_chat", f"AI 对话失败: {user_text[:30]}", str(e))
-        await ai_prefix.send(MessageSegment.reply(event.message_id) + "AI 暂时开小差了，稍后再试~")
