@@ -8,12 +8,12 @@ _CONFIG_FILE = _CONFIG_DIR / "admin_config.json"
 
 _DEFAULT_CONFIG: dict[str, Any] = {
     "ai": {
-        "api_base": "https://api.openai.com/v1",
+        "api_base": "",
         "api_key": "",
-        "model": "gpt-4o-mini",
-        "system_prompt": "你是一个友好的QQ群聊AI助手，回答简洁有趣。",
-        "trigger_prefix": "/ai",
-        "context_rounds": 5,
+        "model": "",
+        "system_prompt": "",
+        "trigger_prefix": "",
+        "context_rounds": 0,
         "enabled": True,
     },
     "group": {

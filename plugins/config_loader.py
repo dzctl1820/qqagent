@@ -21,13 +21,12 @@ def get_ai_config() -> dict[str, Any]:
     try:
         from plugins.admin.db import get_section
         admin = get_section("ai")
-        # admin 配置中 api_key 为空时用 .env 的值
-        if not admin.get("api_key"):
-            admin["api_key"] = env["api_key"]
-        if not admin.get("api_base"):
-            admin["api_base"] = env["api_base"]
-        if not admin.get("model"):
-            admin["model"] = env["model"]
+        # admin 配置中关键字段为空时用 .env 的值
+        for key in ("api_key", "api_base", "model", "system_prompt", "trigger_prefix", "context_rounds"):
+            if not admin.get(key):
+                admin[key] = env.get(key)
+        if "enabled" not in admin:
+            admin["enabled"] = True
         return admin
     except Exception:
         return env
