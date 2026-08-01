@@ -47,8 +47,8 @@ def _is_active_hours() -> bool:
 
 
 async def _human_delay():
-    """随机延迟 3-8 秒，模拟人工回复"""
-    await asyncio.sleep(random.uniform(3, 8))
+    """随机延迟 1-2 秒"""
+    await asyncio.sleep(random.uniform(1, 2))
 
 
 def _build_messages(group_openid: str, member_openid: str, user_text: str) -> list[dict[str, str]]:
@@ -97,6 +97,7 @@ async def handle_at_ai(bot: Bot, event: MessageEvent):
     """@机器人 或私聊时触发 AI 对话"""
     cfg = get_ai_config()
     if not cfg.get("enabled", True):
+        logger.warning("AI 对话已禁用")
         return
     text = event.get_plaintext().strip()
     if not text:
@@ -105,19 +106,30 @@ async def handle_at_ai(bot: Bot, event: MessageEvent):
     # 群聊用 group_openid，私聊用 c2c_前缀 + user_openid
     group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
     member_openid = event.get_user_id()
+    logger.info(f"AI 对话开始: text={text[:50]}, group={group_openid[:12]}, user={member_openid[:12]}")
+    logger.info(f"AI 配置: api_base={cfg.get('api_base', '')}, model={cfg.get('model', '')}, key={cfg.get('api_key', '')[:8]}...")
     if not _is_active_hours():
+        logger.info("非活跃时段，跳过")
         return
     if not _check_rate(group_openid):
         add_log("warning", "ai_chat", f"会话{group_openid[:12]}... 频率限制，跳过回复")
         return
     await _human_delay()
     messages = _build_messages(group_openid, member_openid, text)
+    logger.info(f"调用 LLM: {len(messages)} 条消息")
 
     try:
         reply = await _call_llm(messages)
+        logger.info(f"LLM 返回: {reply[:100]}")
         _update_context(group_openid, member_openid, text, reply)
         await ai_chat.send(MessageSegment.text(reply))
+        logger.info("消息发送成功")
         add_log("success", "ai_chat", f"会话{group_openid[:12]}... 用户{member_openid[:8]}...: {text[:30]}", f"回复: {reply[:80]}")
     except Exception as e:
         logger.error(f"AI 对话失败: {e}")
+        logger.exception(e)
         add_log("error", "ai_chat", f"AI 对话失败: {text[:30]}", str(e))
+        try:
+            await ai_chat.send(MessageSegment.text("抱歉，我暂时开小差了，稍后再试~"))
+        except Exception:
+            pass
