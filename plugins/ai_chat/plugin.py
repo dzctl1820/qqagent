@@ -95,41 +95,61 @@ async def _call_llm(messages: list[dict[str, str]]) -> str:
 @ai_chat.handle()
 async def handle_at_ai(bot: Bot, event: MessageEvent):
     """@机器人 或私聊时触发 AI 对话"""
-    cfg = get_ai_config()
-    if not cfg.get("enabled", True):
-        logger.warning("AI 对话已禁用")
-        return
-    text = event.get_plaintext().strip()
-    if not text:
-        await ai_chat.finish(MessageSegment.text("在吗？有什么可以帮你的~"))
-
-    # 群聊用 group_openid，私聊用 c2c_前缀 + user_openid
-    group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
-    member_openid = event.get_user_id()
-    logger.info(f"AI 对话开始: text={text[:50]}, group={group_openid[:12]}, user={member_openid[:12]}")
-    logger.info(f"AI 配置: api_base={cfg.get('api_base', '')}, model={cfg.get('model', '')}, key={cfg.get('api_key', '')[:8]}...")
-    if not _is_active_hours():
-        logger.info("非活跃时段，跳过")
-        return
-    if not _check_rate(group_openid):
-        add_log("warning", "ai_chat", f"会话{group_openid[:12]}... 频率限制，跳过回复")
-        return
-    await _human_delay()
-    messages = _build_messages(group_openid, member_openid, text)
-    logger.info(f"调用 LLM: {len(messages)} 条消息")
-
+    print(f"[DEBUG] handler entered, event type: {type(event).__name__}")
+    logger.info(f"[DEBUG] handler entered, event type: {type(event).__name__}")
     try:
-        reply = await _call_llm(messages)
-        logger.info(f"LLM 返回: {reply[:100]}")
-        _update_context(group_openid, member_openid, text, reply)
-        await ai_chat.send(MessageSegment.text(reply))
-        logger.info("消息发送成功")
-        add_log("success", "ai_chat", f"会话{group_openid[:12]}... 用户{member_openid[:8]}...: {text[:30]}", f"回复: {reply[:80]}")
-    except Exception as e:
-        logger.error(f"AI 对话失败: {e}")
-        logger.exception(e)
-        add_log("error", "ai_chat", f"AI 对话失败: {text[:30]}", str(e))
+        cfg = get_ai_config()
+        print(f"[DEBUG] config loaded: enabled={cfg.get('enabled')}, model={cfg.get('model')}, base={cfg.get('api_base')}")
+        logger.info(f"[DEBUG] config loaded: enabled={cfg.get('enabled')}, model={cfg.get('model')}, base={cfg.get('api_base')}")
+        if not cfg.get("enabled", True):
+            logger.warning("AI 对话已禁用")
+            return
+        text = event.get_plaintext().strip()
+        print(f"[DEBUG] text: {text[:50]}")
+        logger.info(f"[DEBUG] text: {text[:50]}")
+        if not text:
+            await ai_chat.finish(MessageSegment.text("在吗？有什么可以帮你的~"))
+
+        # 群聊用 group_openid，私聊用 c2c_前缀 + user_openid
+        group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
+        member_openid = event.get_user_id()
+        logger.info(f"AI 对话开始: text={text[:50]}, group={group_openid[:12]}, user={member_openid[:12]}")
+        logger.info(f"AI 配置: api_base={cfg.get('api_base', '')}, model={cfg.get('model', '')}, key={cfg.get('api_key', '')[:8]}...")
+
+        # 先发一条测试消息确认发送通道正常
+        await ai_chat.send(MessageSegment.text("收到消息，正在思考中..."))
+        logger.info("测试消息发送成功")
+
+        if not _is_active_hours():
+            logger.info("非活跃时段，跳过")
+            return
+        if not _check_rate(group_openid):
+            add_log("warning", "ai_chat", f"会话{group_openid[:12]}... 频率限制，跳过回复")
+            return
+        await _human_delay()
+        messages = _build_messages(group_openid, member_openid, text)
+        logger.info(f"调用 LLM: {len(messages)} 条消息")
+
         try:
-            await ai_chat.send(MessageSegment.text("抱歉，我暂时开小差了，稍后再试~"))
+            reply = await _call_llm(messages)
+            logger.info(f"LLM 返回: {reply[:100]}")
+            _update_context(group_openid, member_openid, text, reply)
+            await ai_chat.send(MessageSegment.text(reply))
+            logger.info("消息发送成功")
+            add_log("success", "ai_chat", f"会话{group_openid[:12]}... 用户{member_openid[:8]}...: {text[:30]}", f"回复: {reply[:80]}")
+        except Exception as e:
+            logger.error(f"AI 对话失败: {e}")
+            logger.exception(e)
+            add_log("error", "ai_chat", f"AI 对话失败: {text[:30]}", str(e))
+            try:
+                await ai_chat.send(MessageSegment.text("抱歉，我暂时开小差了，稍后再试~"))
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[DEBUG] handler exception: {e}")
+        logger.error(f"[DEBUG] handler exception: {e}")
+        logger.exception(e)
+        try:
+            await ai_chat.send(MessageSegment.text(f"出错了: {e}"))
         except Exception:
             pass
