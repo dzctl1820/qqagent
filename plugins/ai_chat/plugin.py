@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict, deque
 from typing import Any
 
@@ -16,8 +17,24 @@ from plugins.config_loader import get_ai_config
 # 每个用户在群内的上下文: {group_id: {user_id: deque([{role, content}])}}
 _contexts: dict[int, dict[int, deque[dict[str, Any]]]] = defaultdict(lambda: defaultdict(deque))
 
+# 频率限制：每群最近回复时间戳队列，每分钟最多 5 条
+_rate_limit: dict[int, deque] = defaultdict(lambda: deque(maxlen=5))
+_RATE_WINDOW = 60  # 秒
+
 ai_chat = on_message(rule=to_me(), priority=10, block=True)
 ai_prefix = on_message(priority=11, block=True)
+
+
+def _check_rate(group_id: int) -> bool:
+    """检查群内回复频率，True=允许回复"""
+    now = time.time()
+    q = _rate_limit[group_id]
+    while q and now - q[0] > _RATE_WINDOW:
+        q.popleft()
+    if len(q) >= 5:
+        return False
+    q.append(now)
+    return True
 
 
 def _build_messages(group_id: int, user_id: int, user_text: str) -> list[dict[str, str]]:
@@ -73,6 +90,9 @@ async def handle_at_ai(bot: Bot, event: GroupMessageEvent):
 
     group_id = event.group_id
     user_id = event.user_id
+    if not _check_rate(group_id):
+        add_log("warning", "ai_chat", f"群{group_id} 频率限制，跳过回复")
+        return
     messages = _build_messages(group_id, user_id, text)
 
     try:
@@ -103,6 +123,9 @@ async def handle_prefix_ai(bot: Bot, event: GroupMessageEvent):
 
     group_id = event.group_id
     user_id = event.user_id
+    if not _check_rate(group_id):
+        add_log("warning", "ai_chat", f"群{group_id} 频率限制，跳过回复")
+        return
     messages = _build_messages(group_id, user_id, user_text)
 
     try:
