@@ -16,18 +16,18 @@ def _env_ai_config() -> dict[str, Any]:
 
 
 def get_ai_config() -> dict[str, Any]:
-    """从 admin 配置存储读取 AI 配置，关键字段为空时回退到 .env"""
+    """以 .env 配置为基础，admin 配置中非空字段覆盖"""
     env = _env_ai_config()
     try:
         from plugins.admin.db import get_section
         admin = get_section("ai")
-        # admin 配置中关键字段为空时用 .env 的值
-        for key in ("api_key", "api_base", "model", "system_prompt", "trigger_prefix", "context_rounds"):
-            if not admin.get(key):
-                admin[key] = env.get(key)
-        if "enabled" not in admin:
-            admin["enabled"] = True
-        return admin
+        # 以 .env 为基础，admin 中非空字段覆盖
+        result = env.copy()
+        for key in ("api_key", "api_base", "model", "system_prompt", "trigger_prefix", "context_rounds", "enabled"):
+            val = admin.get(key)
+            if val is not None and val != "" and val != 0:
+                result[key] = val
+        return result
     except Exception:
         return env
 
