@@ -8,7 +8,7 @@ import httpx
 from nonebot import on_message, logger
 from nonebot.adapters.qq import (
     Bot,
-    GroupAtMessageCreateEvent,
+    MessageEvent,
     MessageSegment,
 )
 from nonebot.rule import to_me
@@ -93,8 +93,8 @@ async def _call_llm(messages: list[dict[str, str]]) -> str:
 
 
 @ai_chat.handle()
-async def handle_at_ai(bot: Bot, event: GroupAtMessageCreateEvent):
-    """@机器人 时触发 AI 对话"""
+async def handle_at_ai(bot: Bot, event: MessageEvent):
+    """@机器人 或私聊时触发 AI 对话"""
     cfg = get_ai_config()
     if not cfg.get("enabled", True):
         return
@@ -102,12 +102,13 @@ async def handle_at_ai(bot: Bot, event: GroupAtMessageCreateEvent):
     if not text:
         await ai_chat.finish(MessageSegment.text("在吗？有什么可以帮你的~"))
 
-    group_openid = event.group_openid
+    # 群聊用 group_openid，私聊用 c2c_前缀 + user_openid
+    group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
     member_openid = event.get_user_id()
     if not _is_active_hours():
         return
     if not _check_rate(group_openid):
-        add_log("warning", "ai_chat", f"群{group_openid[:8]}... 频率限制，跳过回复")
+        add_log("warning", "ai_chat", f"会话{group_openid[:12]}... 频率限制，跳过回复")
         return
     await _human_delay()
     messages = _build_messages(group_openid, member_openid, text)
@@ -116,7 +117,7 @@ async def handle_at_ai(bot: Bot, event: GroupAtMessageCreateEvent):
         reply = await _call_llm(messages)
         _update_context(group_openid, member_openid, text, reply)
         await ai_chat.send(MessageSegment.text(reply))
-        add_log("success", "ai_chat", f"群{group_openid[:8]}... 用户{member_openid[:8]}...: {text[:30]}", f"回复: {reply[:80]}")
+        add_log("success", "ai_chat", f"会话{group_openid[:12]}... 用户{member_openid[:8]}...: {text[:30]}", f"回复: {reply[:80]}")
     except Exception as e:
         logger.error(f"AI 对话失败: {e}")
         add_log("error", "ai_chat", f"AI 对话失败: {text[:30]}", str(e))

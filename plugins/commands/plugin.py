@@ -4,7 +4,7 @@ from datetime import datetime
 from nonebot import on_command
 from nonebot.adapters.qq import (
     Bot,
-    GroupAtMessageCreateEvent,
+    MessageEvent,
     MessageSegment,
 )
 
@@ -17,7 +17,7 @@ BOT_START_TIME = time.time()
 
 
 @help_cmd.handle()
-async def handle_help(bot: Bot, event: GroupAtMessageCreateEvent):
+async def handle_help(bot: Bot, event: MessageEvent):
     help_text = (
         "📋 可用指令列表\n"
         "━━━━━━━━━━━━━\n"
@@ -33,7 +33,7 @@ async def handle_help(bot: Bot, event: GroupAtMessageCreateEvent):
 
 
 @status_cmd.handle()
-async def handle_status(bot: Bot, event: GroupAtMessageCreateEvent):
+async def handle_status(bot: Bot, event: MessageEvent):
     uptime = int(time.time() - BOT_START_TIME)
     h, rem = divmod(uptime, 3600)
     m, s = divmod(rem, 60)
@@ -48,15 +48,15 @@ async def handle_status(bot: Bot, event: GroupAtMessageCreateEvent):
 
 
 @time_cmd.handle()
-async def handle_time(bot: Bot, event: GroupAtMessageCreateEvent):
+async def handle_time(bot: Bot, event: MessageEvent):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await time_cmd.send(MessageSegment.text(f"🕐 当前时间: {now}"))
 
 
 @clear_cmd.handle()
-async def handle_clear(bot: Bot, event: GroupAtMessageCreateEvent):
+async def handle_clear(bot: Bot, event: MessageEvent):
     from plugins.ai_chat.plugin import _contexts
-    group_openid = event.group_openid
+    group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
     member_openid = event.get_user_id()
     if group_openid in _contexts and member_openid in _contexts[group_openid]:
         _contexts[group_openid][member_openid].clear()

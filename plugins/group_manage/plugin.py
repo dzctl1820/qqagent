@@ -1,7 +1,7 @@
 from nonebot import on_message
 from nonebot.adapters.qq import (
     Bot,
-    GroupAtMessageCreateEvent,
+    MessageEvent,
     MessageSegment,
 )
 
@@ -11,7 +11,7 @@ keyword_matcher = on_message(priority=50, block=False)
 
 
 @keyword_matcher.handle()
-async def handle_keyword(bot: Bot, event: GroupAtMessageCreateEvent):
+async def handle_keyword(bot: Bot, event: MessageEvent):
     cfg = get_group_config()
     if not cfg.get("keyword_enabled", True):
         return
