@@ -2,9 +2,9 @@ import time
 from datetime import datetime
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import (
+from nonebot.adapters.qq import (
     Bot,
-    GroupMessageEvent,
+    GroupAtMessageCreateEvent,
     MessageSegment,
 )
 
@@ -17,7 +17,7 @@ BOT_START_TIME = time.time()
 
 
 @help_cmd.handle()
-async def handle_help(bot: Bot, event: GroupMessageEvent):
+async def handle_help(bot: Bot, event: GroupAtMessageCreateEvent):
     help_text = (
         "📋 可用指令列表\n"
         "━━━━━━━━━━━━━\n"
@@ -25,16 +25,15 @@ async def handle_help(bot: Bot, event: GroupMessageEvent):
         "/status - 查看机器人状态\n"
         "/time - 查看当前时间\n"
         "/clear - 清除你的AI对话上下文\n"
-        "/ai <内容> - 与AI对话\n"
         "@机器人 <内容> - 直接与AI对话\n"
         "━━━━━━━━━━━━━\n"
         "更多功能开发中..."
     )
-    await help_cmd.send(MessageSegment.reply(event.message_id) + help_text)
+    await help_cmd.send(MessageSegment.text(help_text))
 
 
 @status_cmd.handle()
-async def handle_status(bot: Bot, event: GroupMessageEvent):
+async def handle_status(bot: Bot, event: GroupAtMessageCreateEvent):
     uptime = int(time.time() - BOT_START_TIME)
     h, rem = divmod(uptime, 3600)
     m, s = divmod(rem, 60)
@@ -45,20 +44,20 @@ async def handle_status(bot: Bot, event: GroupMessageEvent):
         f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"状态: ✅ 正常运行"
     )
-    await status_cmd.send(MessageSegment.reply(event.message_id) + status_text)
+    await status_cmd.send(MessageSegment.text(status_text))
 
 
 @time_cmd.handle()
-async def handle_time(bot: Bot, event: GroupMessageEvent):
+async def handle_time(bot: Bot, event: GroupAtMessageCreateEvent):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    await time_cmd.send(MessageSegment.reply(event.message_id) + f"🕐 当前时间: {now}")
+    await time_cmd.send(MessageSegment.text(f"🕐 当前时间: {now}"))
 
 
 @clear_cmd.handle()
-async def handle_clear(bot: Bot, event: GroupMessageEvent):
+async def handle_clear(bot: Bot, event: GroupAtMessageCreateEvent):
     from plugins.ai_chat.plugin import _contexts
-    group_id = event.group_id
-    user_id = event.user_id
-    if group_id in _contexts and user_id in _contexts[group_id]:
-        _contexts[group_id][user_id].clear()
-    await clear_cmd.send(MessageSegment.reply(event.message_id) + "✅ AI对话上下文已清除")
+    group_openid = event.group_openid
+    member_openid = event.get_user_id()
+    if group_openid in _contexts and member_openid in _contexts[group_openid]:
+        _contexts[group_openid][member_openid].clear()
+    await clear_cmd.send(MessageSegment.text("✅ AI对话上下文已清除"))

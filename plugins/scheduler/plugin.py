@@ -15,11 +15,16 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _send_scheduled_message(group_id: int, message: str):
+async def _send_scheduled_message(group_openid: str, message: str):
     try:
         bot = get_bot()
-        await bot.send_group_msg(group_id=group_id, message=message)
-        logger.info(f"定时消息已发送到群 {group_id}")
+        await bot.call_api(
+            "send_group_message",
+            group_openid=group_openid,
+            message_type=0,
+            content=message,
+        )
+        logger.info(f"定时消息已发送到群 {group_openid[:8]}...")
     except Exception as e:
         logger.error(f"定时消息发送失败: {e}")
 
@@ -32,16 +37,16 @@ def _register_jobs():
     cfg = get_scheduler_config()
     jobs = cfg.get("jobs", [])
     for idx, job in enumerate(jobs):
-        group_id = job.get("group_id")
+        group_openid = job.get("group_openid") or job.get("group_id", "")
         hour = job.get("hour", 0)
         minute = job.get("minute", 0)
         message = job.get("message", "")
 
-        if not group_id or not message:
+        if not group_openid or not message:
             logger.warning(f"定时任务 #{idx} 配置不完整，跳过")
             continue
 
-        job_id = f"scheduled_msg_{group_id}_{hour}_{minute}_{idx}"
+        job_id = f"scheduled_msg_{group_openid[:8]}_{hour}_{minute}_{idx}"
 
         scheduler.add_job(
             _send_scheduled_message,
@@ -49,10 +54,10 @@ def _register_jobs():
             hour=hour,
             minute=minute,
             id=job_id,
-            args=[group_id, message],
+            args=[group_openid, message],
             replace_existing=True,
         )
-        logger.info(f"已注册定时任务: 群{group_id} 每日 {hour:02d}:{minute:02d}")
+        logger.info(f"已注册定时任务: 群{group_openid[:8]}... 每日 {hour:02d}:{minute:02d}")
 
 
 def reload_jobs():

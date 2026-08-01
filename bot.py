@@ -1,11 +1,10 @@
 import nonebot
-from nonebot.adapters import Adapter
-from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
+from nonebot.adapters.qq import Adapter as QQAdapter
 
 nonebot.init()
 
 driver = nonebot.get_driver()
-driver.register_adapter(OneBotV11Adapter)
+driver.register_adapter(QQAdapter)
 
 nonebot.load_from_toml("pyproject.toml")
 
