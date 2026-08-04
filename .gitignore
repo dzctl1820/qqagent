@@ -3,8 +3,8 @@ __pycache__/
 .venv/
 dist/
 *.egg-info/
-data/
+data/*
 !data/media/
+data/media/*
 !data/media/emojis/
-!data/media/emojis/**
 lagrange/data/
