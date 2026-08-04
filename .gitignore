@@ -4,4 +4,7 @@ __pycache__/
 dist/
 *.egg-info/
 data/
+!data/media/
+!data/media/emojis/
+!data/media/emojis/**
 lagrange/data/

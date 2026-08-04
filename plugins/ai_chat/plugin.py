@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import time
 from collections import defaultdict, deque
@@ -28,6 +29,65 @@ _RATE_WINDOW = 120  # 秒
 _ACTIVE_HOURS = set(range(8, 24))
 
 ai_chat = on_message(rule=to_me(), priority=10, block=True)
+
+# ===== 表情包功能 =====
+_EMOJI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "media", "emojis")
+
+_EMOJI_KEYWORDS: dict[str, list[str]] = {
+    "happy": ["开心", "高兴", "哈哈", "嘻嘻", "快乐", "好玩", "有趣", "耶", "太棒了", "好耶"],
+    "laugh": ["笑死", "爆笑", "草", "乐", "绷不住", "笑", "哈哈哈"],
+    "shy": ["害羞", "脸红", "不好意思", "羞", "捂脸"],
+    "sad": ["难过", "伤心", "呜呜", "哭", "悲伤", "叹气", "唉"],
+    "angry": ["生气", "气死", "怒", "哼", "可恶"],
+    "surprised": ["惊讶", "天哪", "哇", "不会吧", "震惊", "居然"],
+    "love": ["喜欢", "爱你", "心动", "么么", "抱抱", "温暖"],
+    "think": ["思考", "想想", "嗯", "让我看看", "琢磨", "纠结"],
+    "ok": ["好的", "没问题", "收到", "了解", "明白"],
+    "sleepy": ["困了", "睡觉", "晚安", "累", "休息"],
+}
+
+_EMOJI_CACHE: list[str] = []
+
+
+def _load_emojis() -> list[str]:
+    """加载表情包文件列表"""
+    global _EMOJI_CACHE
+    if _EMOJI_CACHE:
+        return _EMOJI_CACHE
+    if os.path.isdir(_EMOJI_DIR):
+        _EMOJI_CACHE = [
+            os.path.join(_EMOJI_DIR, f)
+            for f in os.listdir(_EMOJI_DIR)
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))
+        ]
+        logger.info(f"加载到 {len(_EMOJI_CACHE)} 张表情包")
+    return _EMOJI_CACHE
+
+
+def _pick_emoji(text: str) -> str | None:
+    """根据回复文本情绪匹配表情包，返回文件路径或 None"""
+    emojis = _load_emojis()
+    if not emojis:
+        return None
+    # 按情绪分类匹配，找到第一个匹配的情绪
+    for mood, keywords in _EMOJI_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            # 尝试找对应情绪分类的子目录
+            mood_dir = os.path.join(_EMOJI_DIR, mood)
+            if os.path.isdir(mood_dir):
+                mood_emojis = [
+                    os.path.join(mood_dir, f)
+                    for f in os.listdir(mood_dir)
+                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))
+                ]
+                if mood_emojis:
+                    return random.choice(mood_emojis)
+            # 没有分类子目录，随机选一张
+            return random.choice(emojis)
+    # 没匹配到情绪，30% 概率随机发一张
+    if random.random() < 0.3:
+        return random.choice(emojis)
+    return None
 
 
 def _check_rate(group_id: int) -> bool:
@@ -121,7 +181,16 @@ async def handle_at_ai(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent)
     try:
         reply = await _call_llm(messages)
         _update_context(group_id, user_id, text, reply)
-        await ai_chat.send(MessageSegment.text(reply))
+        # 发送文本回复
+        msg = MessageSegment.text(reply)
+        # 尝试附带表情包
+        emoji_path = _pick_emoji(reply)
+        if emoji_path:
+            try:
+                msg += MessageSegment.image(f"file:///{emoji_path}")
+            except Exception as e:
+                logger.warning(f"表情包发送失败: {e}")
+        await ai_chat.send(msg)
         add_log("success", "ai_chat", f"会话{group_id} 用户{user_id}: {text[:30]}", f"回复: {reply[:80]}")
     except Exception as e:
         logger.error(f"AI 对话失败: {e}")
