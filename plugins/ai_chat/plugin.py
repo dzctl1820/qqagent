@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import random
 import time
@@ -185,9 +186,11 @@ async def handle_at_ai(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent)
         msg = MessageSegment.text(reply)
         # 尝试附带表情包
         emoji_path = _pick_emoji(reply)
-        if emoji_path:
+        if emoji_path and os.path.isfile(emoji_path):
             try:
-                msg += MessageSegment.image(f"file:///{emoji_path}")
+                with open(emoji_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                msg += MessageSegment.image(f"base64://{b64}")
             except Exception as e:
                 logger.warning(f"表情包发送失败: {e}")
         await ai_chat.send(msg)
