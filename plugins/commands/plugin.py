@@ -2,9 +2,10 @@ import time
 from datetime import datetime
 
 from nonebot import on_command
-from nonebot.adapters.qq import (
+from nonebot.adapters.onebot.v11 import (
     Bot,
-    MessageEvent,
+    GroupMessageEvent,
+    PrivateMessageEvent,
     MessageSegment,
 )
 
@@ -17,7 +18,7 @@ BOT_START_TIME = time.time()
 
 
 @help_cmd.handle()
-async def handle_help(bot: Bot, event: MessageEvent):
+async def handle_help(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
     help_text = (
         "📋 可用指令列表\n"
         "━━━━━━━━━━━━━\n"
@@ -33,7 +34,7 @@ async def handle_help(bot: Bot, event: MessageEvent):
 
 
 @status_cmd.handle()
-async def handle_status(bot: Bot, event: MessageEvent):
+async def handle_status(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
     uptime = int(time.time() - BOT_START_TIME)
     h, rem = divmod(uptime, 3600)
     m, s = divmod(rem, 60)
@@ -48,16 +49,19 @@ async def handle_status(bot: Bot, event: MessageEvent):
 
 
 @time_cmd.handle()
-async def handle_time(bot: Bot, event: MessageEvent):
+async def handle_time(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await time_cmd.send(MessageSegment.text(f"🕐 当前时间: {now}"))
 
 
 @clear_cmd.handle()
-async def handle_clear(bot: Bot, event: MessageEvent):
+async def handle_clear(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
     from plugins.ai_chat.plugin import _contexts
-    group_openid = getattr(event, "group_openid", None) or f"c2c_{event.get_user_id()}"
-    member_openid = event.get_user_id()
-    if group_openid in _contexts and member_openid in _contexts[group_openid]:
-        _contexts[group_openid][member_openid].clear()
+    if isinstance(event, GroupMessageEvent):
+        group_id = event.group_id
+    else:
+        group_id = f"c2c_{event.user_id}"
+    user_id = event.user_id
+    if group_id in _contexts and user_id in _contexts[group_id]:
+        _contexts[group_id][user_id].clear()
     await clear_cmd.send(MessageSegment.text("✅ AI对话上下文已清除"))

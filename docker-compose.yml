@@ -1,5 +1,16 @@
 services:
-  # ===== QQ 机器人 =====
+  # ===== Lagrange.OneBot 协议端 =====
+  lagrange:
+    image: ghcr.io/lagrangedev/lagrange.onebot:edge
+    container_name: qqagent-lagrange
+    restart: always
+    volumes:
+      - ./lagrange/config:/app/config
+      - ./lagrange/data:/app/data
+    networks:
+      - bot-net
+
+  # ===== NoneBot2 机器人 =====
   bot:
     build: .
     container_name: qqagent-bot
@@ -10,6 +21,8 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+    depends_on:
+      - lagrange
     networks:
       - bot-net
 
