@@ -50,16 +50,16 @@ _EMOJI_CACHE: list[str] = []
 
 
 def _load_emojis() -> list[str]:
-    """加载表情包文件列表"""
+    """加载表情包文件列表（递归扫描子目录）"""
     global _EMOJI_CACHE
     if _EMOJI_CACHE:
         return _EMOJI_CACHE
     if os.path.isdir(_EMOJI_DIR):
-        _EMOJI_CACHE = [
-            os.path.join(_EMOJI_DIR, f)
-            for f in os.listdir(_EMOJI_DIR)
-            if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))
-        ]
+        _EMOJI_CACHE = []
+        for root, _dirs, files in os.walk(_EMOJI_DIR):
+            for f in files:
+                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                    _EMOJI_CACHE.append(os.path.join(root, f))
         logger.info(f"加载到 {len(_EMOJI_CACHE)} 张表情包")
     return _EMOJI_CACHE
 
