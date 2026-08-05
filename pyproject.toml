@@ -26,5 +26,6 @@ plugins = [
     "plugins.commands",
     "plugins.group_manage",
     "plugins.scheduler",
+    "plugins.daily_news",
 ]
 plugin_dirs = []
