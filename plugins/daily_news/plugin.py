@@ -30,30 +30,36 @@ _raw = os.getenv("DAILY_NEWS_GROUPS", "")
 if _raw:
     _DAILY_NEWS_GROUPS = [int(g.strip()) for g in _raw.split(",") if g.strip()]
 
-# RSS 源列表
-_RSS_SOURCES = [
-    "https://rsshub.app/ithome/ruby",
-    "https://rsshub.app/36kr/newsflashes",
-    "https://rsshub.app/jiqizhixin/articles",
+# 新闻源：IT之家热榜、36kr快讯、机器之心、Hacker News
+_NEWS_SOURCES = [
+    {
+        "url": "https://www.ithome.com/rss/",
+        "type": "rss",
+    },
+    {
+        "url": "https://news.ycombinator.com/rss",
+        "type": "rss",
+    },
+    {
+        "url": "https://www.chinaz.com/rss/ai.xml",
+        "type": "rss",
+    },
 ]
 
-# 备用：直接用新闻聚合 API
-_NEWS_API = "https://rsshub.app/zaobao/realtime/china"
 
-
-def _parse_rss_items(xml_text: str, limit: int = 15) -> list[dict[str, str]]:
-    """从 RSS XML 中提取标题和链接"""
+def _parse_rss_items(xml_text: str, limit: int = 20) -> list[dict[str, str]]:
+    """从 RSS XML 中提取标题、链接和发布日期"""
     items = []
-    # 简单正则解析 RSS item
-    pattern = r"<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?(?:<description>.*?</description>)?</item>"
+    pattern = r"<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?(?:<pubDate>(.*?)</pubDate>)?.*?</item>"
     for match in re.finditer(pattern, xml_text, re.DOTALL | re.IGNORECASE):
         title = match.group(1).strip()
         link = match.group(2).strip()
+        pub_date = match.group(3) or ""
         # 去掉 CDATA
         title = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", title)
         link = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", link)
         if title and link:
-            items.append({"title": title, "link": link})
+            items.append({"title": title, "link": link, "date": pub_date.strip()})
         if len(items) >= limit:
             break
     return items
@@ -62,14 +68,18 @@ def _parse_rss_items(xml_text: str, limit: int = 15) -> list[dict[str, str]]:
 async def _fetch_news() -> list[dict[str, str]]:
     """从多个 RSS 源抓取最新新闻"""
     all_items: list[dict[str, str]] = []
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        for url in _RSS_SOURCES + [_NEWS_API]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
+        for source in _NEWS_SOURCES:
+            url = source["url"]
             try:
                 resp = await client.get(url)
                 resp.raise_for_status()
-                items = _parse_rss_items(resp.text, limit=10)
+                items = _parse_rss_items(resp.text, limit=15)
                 all_items.extend(items)
-                logger.debug(f"RSS {url} 获取到 {len(items)} 条")
+                logger.info(f"RSS {url} 获取到 {len(items)} 条")
             except Exception as e:
                 logger.warning(f"RSS 获取失败 {url}: {e}")
 
@@ -81,7 +91,7 @@ async def _fetch_news() -> list[dict[str, str]]:
             seen.add(item["title"])
             unique.append(item)
 
-    return unique[:20]
+    return unique[:30]
 
 
 def _filter_tech_news(items: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -108,7 +118,7 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
     cfg = get_ai_config()
 
     # 准备新闻标题列表
-    titles = "\n".join(f"{i+1}. {item['title']}" for i, item in enumerate(news_items[:15]))
+    titles = "\n".join(f"{i+1}. {item['title']}" for i, item in enumerate(news_items[:20]))
 
     now = datetime.now(_TZ_CN).strftime("%Y年%m月%d日")
     system_prompt = cfg.get("system_prompt", "")
@@ -116,16 +126,16 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
 
 {titles}
 
-请从中挑选5条最有价值、与编程/AI/科技最相关的新闻，整理成一份简洁的日报。格式要求：
+请从中挑选10条最有价值、与编程/AI/科技最相关的新闻，整理成一份详细的日报。格式要求：
 
 📰 爱可斯的每日科技日报 | {now}
 
-1. 【标题】一句话简要说明
-2. 【标题】一句话简要说明
-...（共5条）
+1. 【标题】两到三句话详细说明新闻内容和意义
+2. 【标题】两到三句话详细说明新闻内容和意义
+...（共10条）
 
 要求：
-- 每条新闻用一句话概括核心内容
+- 每条新闻用两到三句话详细概括核心内容和影响，不要只有一句话
 - 保持专业但语气活泼可爱，符合爱可斯的人设
 - 最后加一句简短的总结或鼓励语
 - 不要加链接
@@ -142,7 +152,7 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": 1024,
+        "max_tokens": 2048,
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
