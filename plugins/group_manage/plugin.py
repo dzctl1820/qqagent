@@ -1,7 +1,8 @@
-from nonebot import on_message
+from nonebot import on_message, on_notice
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
+    GroupIncreaseNoticeEvent,
     MessageSegment,
 )
 
@@ -21,3 +22,19 @@ async def handle_keyword(bot: Bot, event: GroupMessageEvent):
         if keyword in text:
             await keyword_matcher.send(MessageSegment.text(reply))
             return
+
+
+welcome_matcher = on_notice(priority=10, block=False)
+
+
+@welcome_matcher.handle()
+async def handle_group_increase(bot: Bot, event: GroupIncreaseNoticeEvent):
+    cfg = get_group_config()
+    if not cfg.get("welcome_enabled", True):
+        return
+    welcome = cfg.get("welcome", "欢迎加入本群！")
+    await bot.call_api(
+        "send_group_msg",
+        group_id=event.group_id,
+        message=MessageSegment.text(welcome),
+    )
