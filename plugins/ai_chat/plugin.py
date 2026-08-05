@@ -104,8 +104,10 @@ def _check_rate(group_id: int) -> bool:
 
 
 def _is_active_hours() -> bool:
-    """检查当前是否在活跃时段内"""
-    return time.localtime().tm_hour in _ACTIVE_HOURS
+    """检查当前是否在活跃时段内（按东八区时间）"""
+    from datetime import datetime, timezone, timedelta
+    tz_cn = timezone(timedelta(hours=8))
+    return datetime.now(tz_cn).hour in _ACTIVE_HOURS
 
 
 async def _human_delay():
