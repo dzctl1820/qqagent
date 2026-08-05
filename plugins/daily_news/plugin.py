@@ -30,58 +30,77 @@ _raw = os.getenv("DAILY_NEWS_GROUPS", "")
 if _raw:
     _DAILY_NEWS_GROUPS = [int(g.strip()) for g in _raw.split(",") if g.strip()]
 
-# 新闻源：IT之家热榜、36kr快讯、机器之心、Hacker News
-_NEWS_SOURCES = [
-    {
-        "url": "https://www.ithome.com/rss/",
-        "type": "rss",
-    },
-    {
-        "url": "https://news.ycombinator.com/rss",
-        "type": "rss",
-    },
-    {
-        "url": "https://www.chinaz.com/rss/ai.xml",
-        "type": "rss",
-    },
-]
+# 搜索关键词
+_SEARCH_KEYWORDS = ["编程", "AI", "人工智能", "大模型", "科技互联网"]
 
 
-def _parse_rss_items(xml_text: str, limit: int = 20) -> list[dict[str, str]]:
-    """从 RSS XML 中提取标题、链接和发布日期"""
+def _parse_baidu_results(html_text: str, limit: int = 15) -> list[dict[str, str]]:
+    """从百度搜索结果页面提取新闻标题"""
     items = []
-    pattern = r"<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?(?:<pubDate>(.*?)</pubDate>)?.*?</item>"
-    for match in re.finditer(pattern, xml_text, re.DOTALL | re.IGNORECASE):
-        title = match.group(1).strip()
-        link = match.group(2).strip()
-        pub_date = match.group(3) or ""
-        # 去掉 CDATA
-        title = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", title)
-        link = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", link)
-        if title and link:
-            items.append({"title": title, "link": link, "date": pub_date.strip()})
+    # 百度搜索结果标题在 <h3> 标签内
+    pattern = r"<h3[^>]*>.*?<a[^>]*>(.*?)</a>.*?</h3>"
+    for match in re.finditer(pattern, html_text, re.DOTALL | re.IGNORECASE):
+        raw = match.group(1)
+        # 去掉 HTML 标签
+        title = re.sub(r"<[^>]+>", "", raw).strip()
+        if title and len(title) > 5:
+            items.append({"title": title, "link": ""})
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _parse_sogou_results(html_text: str, limit: int = 15) -> list[dict[str, str]]:
+    """从搜狗搜索结果页面提取新闻标题"""
+    items = []
+    # 搜狗新闻结果标题
+    pattern = r"<h3[^>]*>.*?<a[^>]*>(.*?)</a>.*?</h3>"
+    for match in re.finditer(pattern, html_text, re.DOTALL | re.IGNORECASE):
+        raw = match.group(1)
+        title = re.sub(r"<[^>]+>", "", raw).strip()
+        if title and len(title) > 5:
+            items.append({"title": title, "link": ""})
         if len(items) >= limit:
             break
     return items
 
 
 async def _fetch_news() -> list[dict[str, str]]:
-    """从多个 RSS 源抓取最新新闻"""
+    """从搜索引擎抓取当天最新科技新闻"""
     all_items: list[dict[str, str]] = []
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
     async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
-        for source in _NEWS_SOURCES:
-            url = source["url"]
+        # 百度新闻搜索
+        for kw in _SEARCH_KEYWORDS[:3]:
             try:
-                resp = await client.get(url)
+                resp = await client.get(
+                    f"https://www.baidu.com/s?wd={kw}&rn=20&tn=news",
+                    params={"ie": "utf-8"},
+                )
                 resp.raise_for_status()
-                items = _parse_rss_items(resp.text, limit=15)
+                items = _parse_baidu_results(resp.text, limit=10)
                 all_items.extend(items)
-                logger.info(f"RSS {url} 获取到 {len(items)} 条")
+                logger.info(f"百度搜索 '{kw}' 获取到 {len(items)} 条")
             except Exception as e:
-                logger.warning(f"RSS 获取失败 {url}: {e}")
+                logger.warning(f"百度搜索失败 '{kw}': {e}")
+
+        # 搜狗新闻搜索作为备用
+        for kw in _SEARCH_KEYWORDS[:2]:
+            try:
+                resp = await client.get(
+                    f"https://news.sogou.com/news?query={kw}&mode=1",
+                    params={"ie": "utf-8"},
+                )
+                resp.raise_for_status()
+                items = _parse_sogou_results(resp.text, limit=10)
+                all_items.extend(items)
+                logger.info(f"搜狗搜索 '{kw}' 获取到 {len(items)} 条")
+            except Exception as e:
+                logger.warning(f"搜狗搜索失败 '{kw}': {e}")
 
     # 去重
     seen = set()
@@ -122,11 +141,11 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
 
     now = datetime.now(_TZ_CN).strftime("%Y年%m月%d日")
     system_prompt = cfg.get("system_prompt", "")
-    user_prompt = f"""今天是{now}。以下是最新的科技新闻标题列表：
+    user_prompt = f"""今天是{now}。以下是通过搜索引擎实时抓取到的最新科技新闻标题：
 
 {titles}
 
-请从中挑选10条最有价值、与编程/AI/科技最相关的新闻，整理成一份详细的日报。格式要求：
+请根据这些标题，挑选10条最有价值、与编程/AI/科技最相关的新闻，整理成一份详细的日报。格式要求：
 
 📰 爱可斯的每日科技日报 | {now}
 
@@ -140,7 +159,8 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
 - 最后加一句简短的总结或鼓励语
 - 不要加链接
 - 不要使用任何Markdown格式（不要用**、*、#、`等符号），用纯文本和emoji排版
-- 用序号和换行来组织内容，不要用Markdown标题或加粗"""
+- 用序号和换行来组织内容，不要用Markdown标题或加粗
+- 日期必须是{now}，不要使用其他日期"""
 
     headers = {
         "Authorization": f"Bearer {cfg.get('api_key', '')}",
