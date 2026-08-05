@@ -128,7 +128,9 @@ async def _generate_daily_report(news_items: list[dict[str, str]]) -> str:
 - 每条新闻用一句话概括核心内容
 - 保持专业但语气活泼可爱，符合爱可斯的人设
 - 最后加一句简短的总结或鼓励语
-- 不要加链接"""
+- 不要加链接
+- 不要使用任何Markdown格式（不要用**、*、#、`等符号），用纯文本和emoji排版
+- 用序号和换行来组织内容，不要用Markdown标题或加粗"""
 
     headers = {
         "Authorization": f"Bearer {cfg.get('api_key', '')}",
