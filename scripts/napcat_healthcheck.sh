@@ -69,21 +69,25 @@ if ! curl -s -o /dev/null -m 5 "http://127.0.0.1:$WEBUI_PORT/" 2>/dev/null; then
     exit 0
 fi
 
-# 4. 检查 napcat 日志中是否有掉线关键词
-NAPCAT_LOG=$(docker logs --since 5m qqagent-napcat 2>&1)
-if echo "$NAPCAT_LOG" | grep -qi "offline\|掉线\|kicked\|被踢\|login.*fail\|登录失败\|session.*expire"; then
-    log "检测到 napcat 掉线关键词，重启 napcat..."
-    touch "$RESTART_FLAG"
-    cd "$PROJECT_DIR" && docker compose restart napcat
-    sleep 20
-    NEW_LOG=$(docker logs --since 30s qqagent-bot 2>&1)
-    if echo "$NEW_LOG" | grep -q "connected"; then
-        log "重启后 bot 已重新连接"
-        rm -f "$RESTART_FLAG"
-    else
-        log "警告: 重启后仍未连接，可能需要扫码"
+# 4. 检查 napcat 日志中是否有掉线关键词（检查最近 2 小时）
+NAPCAT_LOG=$(docker logs --since 2h qqagent-napcat 2>&1)
+NAPCAT_RECENT=$(docker logs --since 10m qqagent-napcat 2>&1)
+# 如果最近 2 小时内有 KickedOffLine，且最近 10 分钟没有收到/发送消息（说明确实离线了）
+if echo "$NAPCAT_LOG" | grep -qi "KickedOffLine\|登录失效\|账号状态变更为离线"; then
+    if ! echo "$NAPCAT_RECENT" | grep -qi "接收\|发送\|connected"; then
+        log "检测到 QQ 被踢下线，重启 napcat..."
+        touch "$RESTART_FLAG"
+        cd "$PROJECT_DIR" && docker compose restart napcat
+        sleep 20
+        NEW_LOG=$(docker logs --since 30s qqagent-bot 2>&1)
+        if echo "$NEW_LOG" | grep -q "connected"; then
+            log "重启后 bot 已重新连接"
+            rm -f "$RESTART_FLAG"
+        else
+            log "警告: 重启后仍未连接，可能需要扫码"
+        fi
+        exit 0
     fi
-    exit 0
 fi
 
 log "napcat 运行正常"
